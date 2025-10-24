@@ -34,6 +34,7 @@ jobs:
         CIBW_BEFORE_BUILD: pip install cython
         CIBW_PRERELEASE_PYTHONS: 'True'
         CIBW_BUILD_VERBOSITY: '3' # 详细日志
+	CIBW_ENVIRONMENT: CXXFLAGS="/std:c++17"
 
     - name: Upload Windows Python wheels
       uses: actions/upload-artifact@v4
