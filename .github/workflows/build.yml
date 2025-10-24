@@ -1,45 +1,53 @@
-# .github/workflows/build_fasttext_concurrent.yml
-name: Build fastText for Windows (multiple Python versions)
+# .github/workflows/build.yml
+name: Build fastText for Windows (CPython 3.12/3.13)
 
 on:
   workflow_dispatch:
 
 jobs:
   build_windows_wheels:
-    name: Build fastText on Windows (Python ${{ matrix.python-version }}, 64-bit)
+    name: Build fastText on Windows (cibuildwheel tag: ${{ matrix.cibw_tag }})
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ['3.12', '3.13'] # 尝试 3.12 和 3.13
+        # 直接用 cibuildwheel 的 Python 标签，避免把 3.12 展开成 cp3.12（这是错误的）
+        cibw_tag: ['cp312-*', 'cp313-*']
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x' # 基础 Python 版本
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'  # cibuildwheel 会自行安装目标版本（通过 nuget）
 
-    - name: Install cibuildwheel
-      run: pip install cibuildwheel==2.20.0
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.20.0
 
-    - name: Build fastText wheels for Windows (Python ${{ matrix.python-version }})
-      run: python -m cibuildwheel --output-dir wheelhouse
-      env:
-        CIBW_PLATFORM: windows
-        CIBW_BUILD: cp${{ matrix.python-version }}* # 使用矩阵变量
-        CIBW_ARCHS_WINDOWS: AMD64
-        CIBW_BEFORE_BUILD: pip install cython
-        CIBW_PRERELEASE_PYTHONS: 'True'
-        CIBW_BUILD_VERBOSITY: '3' # 详细日志
-	CIBW_ENVIRONMENT: CXXFLAGS="/std:c++17"
+      - name: Build fastText wheels for Windows (${{ matrix.cibw_tag }})
+        run: python -m cibuildwheel --output-dir wheelhouse
+        env:
+          CIBW_PLATFORM: windows
+          CIBW_BUILD: ${{ matrix.cibw_tag }}
+          CIBW_ARCHS_WINDOWS: AMD64
+          CIBW_PRERELEASE_PYTHONS: 'True'     # 允许构建 3.13 预发布
+          CIBW_BUILD_VERBOSITY: '3'           # 更详细日志
 
-    - name: Upload Windows Python wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: fasttext-wheels-windows-py${{ matrix.python-version }}
-        path: wheelhouse/*.whl
+          # 在构建前升级核心工具并安装依赖（确保 pybind11 足够新，开启 3.13 兼容）
+          CIBW_BEFORE_BUILD: >
+            pip install -U pip setuptools wheel &&
+            pip install -U "pybind11>=2.12" cython
+
+          # 关键：让 MSVC 使用 C++17（以及推荐的异常模型、OpenMP、正确 __cplusplus 宏）
+          # 注意：Windows 要用 CL 传标志；不要用 CXXFLAGS
+          CIBW_ENVIRONMENT_WINDOWS: 'CL=/std:c++17 /EHsc /openmp /Zc:__cplusplus'
+
+      - name: Upload Windows Python wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: fasttext-wheels-${{ matrix.cibw_tag }}
+          path: wheelhouse/*.whl
 
 
